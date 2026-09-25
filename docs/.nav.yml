@@ -4,6 +4,7 @@ nav:
   - index.md
   - Guides:
       - structured.md
+      - typed-api.md
       - hooks
       - langchain.md
       - glob: "*"

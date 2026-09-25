@@ -3,22 +3,13 @@
 This module provides TypedDict definitions for question schemas, enabling
 IDE autocomplete, static type checking, and documentation of expected formats.
 """
-
-import sys
-from typing import Any, Literal, Union
+from typing import TypedDict, NotRequired, Literal, Union, Dict, List, Optional, Any
 
 # Question type literal - matches QTYPES in common.py
 QType = Literal["choice", "score", "noul"]
 
 # Runtime mapping (kept in common.py for backward compatibility)
 # QTYPES: Dict[QType, int] = {"choice": 0, "score": 1, "noul": 2}
-
-if sys.version_info >= (3, 11):
-    from typing import NotRequired, TypedDict
-else:
-    from typing import TypedDict
-
-    from typing_extensions import NotRequired
 
 
 # Type-specific question schemas using TypedDict
@@ -30,10 +21,9 @@ class ChoiceQuestion(TypedDict):
         instructions: Text describing what to decide
         criteria: Option labels -> descriptions (dict), or just labels (list)
     """
-
     type: Literal["choice"]
     instructions: str
-    criteria: dict[str, str] | list[str]
+    criteria: Union[Dict[str, str], List[str]]
 
 
 class ScoreQuestion(TypedDict):
@@ -44,10 +34,9 @@ class ScoreQuestion(TypedDict):
         instructions: Text describing what to rate
         criteria: List of level descriptions, index 0 = lowest
     """
-
     type: Literal["score"]
     instructions: str
-    criteria: list[str]
+    criteria: List[str]
 
 
 class NoulQuestion(TypedDict):
@@ -58,36 +47,33 @@ class NoulQuestion(TypedDict):
         instructions: Text describing the yes/no question
         criteria: Optional dict with "true"/"false" descriptions
     """
-
     type: Literal["noul"]
     instructions: str
-    criteria: NotRequired[dict[str, str]]
+    criteria: NotRequired[Dict[str, str]]
 
 
 # Union of all question types for type checking
 Question = ChoiceQuestion | ScoreQuestion | NoulQuestion
 
 # Dictionary mapping question IDs to question definitions
-Questions = dict[str, Question]
+Questions = Dict[str, Question]
 
 
 # Result-related types
 class UsageDict(TypedDict):
     """Token usage information."""
-
     input_tokens: int
     output_tokens: int
 
 
 class RouteDecisionDict(TypedDict):
     """Routing decision from Router.route()."""
-
     model: str
     repo: str
     reason: str
-    detection: NotRequired[dict[str, Any] | None]
-    workflow: NotRequired[str | None]
+    detection: NotRequired[Optional[Dict[str, Any]]]
+    workflow: NotRequired[Optional[str]]
 
 
 # State type accepted by predict()
-State = Union[str, dict[str, Any], list[Any]]
+State = Union[str, Dict[str, Any], List[Any]]

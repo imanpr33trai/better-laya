@@ -236,57 +236,66 @@ Laya ships three checkpoints. The built-in **`Router`** is the recommended entry
 
 ```python
 from laya import Router
+from laya.typing import ChoiceQuestion, ScoreQuestion, NoulQuestion, Questions
 
 # Preload checkpoints into memory for instant sub-35ms routing
 router = Router(preload=True)
 
-# 1. State in any language or schema
+# 1. State in any language or schema (text, JSON dict, email, or conversation)
 state = {
     "from": "user@acme.com",
-    "subject": "Duplicate charge on invoice #4411",
-    "body": "Hi, we were billed twice for March. Please refund the duplicate today or we will cancel our plan."
+    "subject": "Duplicate charge on invoice #4411 — need refund ASAP",
+    "body": "Hi, we were billed twice for March. Please refund the duplicate today "
+            "or we will cancel our plan. This is the second time this has happened."
 }
 
-# 2. Define your typed questions
-questions = {
-    "department": {
-        "type": "choice",
-        "instructions": "Which department should handle this request?",
-        "criteria": {
-            "billing": "invoices, payments, refunds",
-            "technical": "bugs, outages, system errors",
-            "sales": "pricing, new contracts",
-            "other": "everything else"
+# 2. Define your typed questions with full IDE autocomplete & type safety
+questions: Questions = {
+    "department": ChoiceQuestion(
+        type="choice",
+        instructions="Which department should handle this request?",
+        criteria={
+            "billing": "invoices, payments, refunds, charge disputes",
+            "technical": "bugs, outages, system errors, API issues",
+            "sales": "pricing, new contracts, upgrades",
+            "account": "login, password, subscription, profile changes",
+            "general": "everything else"
         }
-    },
-    "urgency": {
-        "type": "score",
-        "instructions": "How urgent is this request?",
-        "criteria": ["not urgent", "soon", "critical deadline or blocking issue"]
-    },
-    "churn_risk": {
-        "type": "noul",
-        "instructions": "Does the user threaten to cancel or leave?"
-    },
-    "refund_requested": {
-        "type": "noul",
-        "instructions": "Does the user explicitly request a refund?"
-    }
+    ),
+    "urgency": ScoreQuestion(
+        type="score",
+        instructions="How urgent is this request on a 4-level scale?",
+        criteria=["not urgent", "soon", "high", "critical deadline or blocking issue"]
+    ),
+    "churn_risk": NoulQuestion(
+        type="noul",
+        instructions="Does the user threaten to cancel, leave, or express strong dissatisfaction?",
+    ),
+    "refund_requested": NoulQuestion(
+        type="noul",
+        instructions="Does the user explicitly request a refund?",
+    ),
 }
 
-# 3. English state -> automatically routed to laya (ModernBERT-large, 39.5 ms)
+# 3. English state -> automatically routed to laya (ModernBERT-large, ~39 ms)
 res_en = router.predict(state, questions)
-print("Department :", res_en["answers"]["department"]["choice"])  # -> billing (confidence: 0.94)
-print("Routing    :", res_en["routing"]["model"])                 # -> english
+print("Department :", res_en.answers["department"].choice)  # -> billing (confidence: 0.94)
+print("Routing    :", res_en.routing.model)                 # -> english
 
-# 4. Hindi state -> automatically routed to laya-multilingual (mmBERT-base, 32.8 ms)
+# 4. Hindi state -> automatically routed to laya-multilingual (mmBERT-base, ~33 ms)
 res_hi = router.predict({"body": "मुझसे दो बार शुल्क लिया गया, कृपया पैसे वापस करें।"}, questions)
-print("Department :", res_hi["answers"]["department"]["choice"])  # -> billing (confidence: 0.86)
-print("Routing    :", res_hi["routing"]["model"])                 # -> multilingual
+print("Department :", res_hi.answers["department"].choice)  # -> billing (confidence: 0.86)
+print("Routing    :", res_hi.routing.model)                 # -> multilingual
 
 # 5. Explicit override when you want a specific checkpoint
 res_td = router.predict(state, questions, model="typed-decisions")
 ```
+
+**Why typed questions?**
+- `ChoiceQuestion`, `ScoreQuestion`, `NoulQuestion` give full IDE autocomplete
+- `criteria` as dict (label → description) provides richer context to the model
+- MyPy catches type errors before runtime
+- Backward compatible: plain dicts still work
 
 Every result carries full routing metadata explaining why the choice was made:
 
@@ -565,19 +574,46 @@ If you only need a single checkpoint for a dedicated pipeline, you can load mode
 
 ```python
 import laya
+from laya.typing import ChoiceQuestion, ScoreQuestion, NoulQuestion, Questions
 
 # 1. Load a specific checkpoint directly from the hub
 agent = laya.load("convaiinnovations/laya")                           # English root
 agent_ml = laya.load("convaiinnovations/laya", subfolder="multilingual") # 100+ languages
 agent_td = laya.load("convaiinnovations/laya", subfolder="typed-decisions")
 
-# 2. Run all questions in ONE single forward pass (~35 ms on GPU)
-result = agent.predict(state, questions)
-answers = result["answers"]
+# 2. Define typed questions (with full IDE autocomplete)
+questions: Questions = {
+    "department": ChoiceQuestion(
+        type="choice",
+        instructions="Which department should handle this?",
+        criteria={
+            "billing": "invoices, payments, refunds",
+            "technical": "bugs, outages, system errors",
+            "sales": "pricing, new contracts",
+            "general": "everything else"
+        }
+    ),
+    "urgency": ScoreQuestion(
+        type="score",
+        instructions="How urgent is this request?",
+        criteria=["not urgent", "soon", "critical deadline or blocking issue"]
+    ),
+    "churn_risk": NoulQuestion(
+        type="noul",
+        instructions="Does the user threaten to cancel or leave?"
+    ),
+}
 
-print("Department :", answers["department"]["choice"])   # -> billing (confidence: 0.94)
-print("Urgency    :", answers["urgency"]["score"])        # -> 1.84 / 2.0
-print("Churn Risk :", answers["churn_risk"]["noul"])       # -> 0.892 (89.2% probability)
+# 3. Run all questions in ONE single forward pass (~35 ms on GPU)
+result = agent.predict(state, questions)
+
+# Dot access (IDE autocomplete)
+print("Department :", result.answers["department"].choice)   # -> billing (confidence: 0.94)
+print("Urgency    :", result.answers["urgency"].score)        # -> 1.84 / 2.0
+print("Churn Risk :", result.answers["churn_risk"].noul)       # -> 0.892 (89.2% probability)
+
+# Dict access also works (backward compatible)
+print("Department :", result["answers"]["department"]["choice"])
 ```
 
 Passing an empty question dictionary to `agent.predict(state, {})` or
@@ -769,17 +805,26 @@ questions: Questions = {
     "department": ChoiceQuestion(
         type="choice",
         instructions="Route this support ticket to the correct department",
-        criteria=["billing", "technical", "account", "general"]
+        criteria={
+            "billing": "invoices, payments, refunds, charge disputes",
+            "technical": "bugs, outages, system errors, API issues",
+            "account": "login, password, subscription, profile changes",
+            "general": "everything else"
+        }
     ),
     "urgency": ScoreQuestion(
         type="score",
-        instructions="Rate the urgency of this issue",
+        instructions="Rate the urgency of this issue on a 4-level scale",
         criteria=["low", "medium", "high", "critical"]
     ),
     "is_spam": NoulQuestion(
         type="noul",
-        instructions="Is this message spam?",
-        criteria={"true": "clear spam", "false": "legitimate message"}
+        instructions="Is this message spam or unsolicited commercial content?",
+        criteria={"true": "clear spam, promotional, or bot-generated", "false": "legitimate user message"}
+    ),
+    "churn_risk": NoulQuestion(
+        type="noul",
+        instructions="Does the user threaten to cancel, leave, or express strong dissatisfaction?",
     ),
 }
 ```
@@ -789,6 +834,7 @@ questions: Questions = {
 - ✅ MyPy catches type mismatches before runtime
 - ✅ Documentation built into the type definitions
 - ✅ PEP 561 compliant (`py.typed` marker included)
+- ✅ `criteria` as dict (label → description) gives the model richer context than a list
 
 ### Typed Answer Objects (PredictResult)
 
@@ -798,22 +844,40 @@ The new `PredictResult` dataclass and answer types provide **both dot and dict a
 from laya import Router
 from laya.typing import PredictResult
 
-router = Router(preload=True)
+# Define a realistic state (text, JSON dict, email, or conversation)
+state = {
+    "from": "user@acme.com",
+    "subject": "Duplicate charge on invoice #4411 — need refund ASAP",
+    "body": "Hi, we were billed twice for March. Please refund the duplicate today "
+            "or we will cancel our plan. This is the second time this has happened."
+}
+
+router = Router(preload=True)  # Preloads all checkpoints for instant routing
 result: PredictResult = router.predict(state, questions)
 
-# Dot access (IDE autocomplete)
-print(result.answers["department"].choice)        # "account"
-print(result.answers["department"].probabilities) # {"billing": 0.1, "technical": 0.2, "account": 0.6, "general": 0.1}
-print(result.answers["department"].confidence)    # 0.72
-print(result.answers["urgency"].score)            # 2.3 (expected value)
+# Dot access (IDE autocomplete works!)
+print(result.answers["department"].choice)        # "billing"
+print(result.answers["department"].probabilities) # {"billing": 0.94, "technical": 0.03, "account": 0.02, "general": 0.01}
+print(result.answers["department"].confidence)    # 0.94
+print(result.answers["department"].action)        # {"act_probability": 0.99}
+
+print(result.answers["urgency"].score)            # 2.8 (expected value on 0-3 scale)
 print(result.answers["urgency"].legend)           # {"0": "low", "1": "medium", "2": "high", "3": "critical"}
-print(result.answers["is_spam"].noul)             # 0.05 (P(true))
-print(result.usage)                               # {"input_tokens": 42, "output_tokens": 0}
-print(result.routing.model)                       # "multilingual" (if using Router)
+print(result.answers["urgency"].probabilities)    # {"0": 0.02, "1": 0.08, "2": 0.25, "3": 0.65}
+print(result.answers["urgency"].confidence)       # 0.81
+
+print(result.answers["is_spam"].noul)             # 0.02 (P(true) = 2% spam)
+print(result.answers["is_spam"].confidence)       # 0.98
+
+print(result.answers["churn_risk"].noul)          # 0.87 (87% probability of churn)
+print(result.answers["churn_risk"].confidence)    # 0.87
+
+print(result.usage)                               # {"input_tokens": 67, "output_tokens": 0}
+print(result.routing.model)                       # "english" (or "multilingual" for non-Latin scripts)
 
 # Dict access also works (backward compatible)
-print(result["answers"]["department"]["choice"])  # "account"
-print(result["routing"]["model"])                 # "multilingual"
+print(result["answers"]["department"]["choice"])  # "billing"
+print(result["routing"]["model"])                 # "english"
 ```
 
 ### Answer Type Reference
