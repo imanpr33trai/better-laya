@@ -5,7 +5,7 @@ IDE autocomplete, static type checking, and documentation of expected formats.
 """
 
 import sys
-from typing import Any, Literal, NotRequired, TypedDict, Union
+from typing import Any, Literal, Union
 
 # Question type literal - matches QTYPES in common.py
 QType = Literal["choice", "score", "noul"]
